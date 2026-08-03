@@ -1,43 +1,154 @@
 ﻿<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-	<meta charset="utf-8" />
-	<title></title>
-	<!--DO NOT FORGET THIS SCRIPT TAG SO YOU CAN USE JQUERY!!!!!-->
-	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <meta charset="utf-8" />
+    <title>WorkVoice</title>
 
-	<!--YOUR OWN JAVASCRIPT CAN GO RIGHT HERE-->
-	<script type="text/javascript">
-		function TestButtonHandler() {
-			var webMethod = "ProjectServices.asmx/TestConnection";
-			var parameters = "{}";
+    <!-- DO NOT FORGET THIS SCRIPT TAG SO YOU CAN USE JQUERY -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 
-			//jQuery ajax method
-			$.ajax({
-				type: "POST",
-				url: webMethod,
-				data: parameters,
-				contentType: "application/json; charset=utf-8",
-				dataType: "json",
-				success: function (msg) {
-					var responseFromServer = msg.d;
-					alert(responseFromServer);
-				},
-				error: function (e) {
-					alert("this code will only execute if javascript is unable to access the webservice");
-				}
-			});
-		}
-	</script>
-	<!--END OF YOUR OWN JAVASCRIPT-->
+    <!-- YOUR OWN JAVASCRIPT CAN GO RIGHT HERE -->
+    <script type="text/javascript">
 
-	<!--AND YOUR OWN CSS CAN GO HERE AS WELL-->
-	<style>
+        function TestButtonHandler() {
+            var webMethod = "ProjectServices.asmx/TestConnection";
+            var parameters = "{}";
 
-	</style>
-	<!--END OF YOUR OWN CSS-->
-</head >
+            $.ajax({
+                type: "POST",
+                url: webMethod,
+                data: parameters,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    var responseFromServer = msg.d;
+                    alert(responseFromServer);
+                },
+                error: function () {
+                    alert("This code will only execute if JavaScript is unable to access the web service.");
+                }
+            });
+        }
+
+        function submitFeedback() {
+
+            var category = $("#category").val();
+            var concern = $("#concern").val().trim();
+            var solution = $("#solution").val().trim();
+
+            if (category === "" || concern === "" || solution === "") {
+                $("#message").css("color", "red");
+                $("#message").text("Please complete all fields.");
+                return;
+            }
+
+            $("#message").css("color", "green");
+            $("#message").text("Feedback submitted successfully.");
+
+            $("#category").val("");
+            $("#concern").val("");
+            $("#solution").val("");
+        }
+
+    </script>
+    <!-- END OF YOUR OWN JAVASCRIPT -->
+
+    <!-- YOUR OWN CSS CAN GO HERE -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f8f9fa;
+        }
+
+        h1 {
+            color: #1f4e79;
+            margin-bottom: 5px;
+        }
+
+        h3 {
+            color: #444;
+            margin-top: 0;
+        }
+
+        p {
+            max-width: 600px;
+            line-height: 1.5;
+        }
+
+        button {
+            padding: 10px 16px;
+            margin-top: 10px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        textarea,
+        select {
+            width: 500px;
+            max-width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+        }
+
+        #message {
+            font-weight: bold;
+            margin-top: 15px;
+        }
+    </style>
+    <!-- END OF YOUR OWN CSS -->
+</head>
+
 <body>
-	<button onclick="javascript: TestButtonHandler();">Click here to test connection!</button>
+
+    <h1>WorkVoice</h1>
+
+    <h3>Anonymous Workplace Improvement Board</h3>
+
+    <p>
+        Welcome to WorkVoice. This application allows employees to anonymously
+        submit workplace concerns along with suggested improvements to help
+        management identify and address issues.
+    </p>
+
+    <button type="button" onclick="TestButtonHandler();">
+        Test Server Connection
+    </button>
+
+    <hr>
+
+    <h2>Submit Anonymous Feedback</h2>
+
+    <label for="category">Category</label>
+    <br>
+    <select id="category">
+        <option value="">Select a category</option>
+        <option>Workload</option>
+        <option>Tools</option>
+        <option>Scheduling</option>
+        <option>Management</option>
+        <option>Workplace Culture</option>
+    </select>
+
+    <br><br>
+
+    <label for="concern">Workplace Concern</label>
+    <br>
+    <textarea id="concern" rows="5"></textarea>
+
+    <br><br>
+
+    <label for="solution">Suggested Improvement</label>
+    <br>
+    <textarea id="solution" rows="5"></textarea>
+
+    <br><br>
+
+    <button type="button" onclick="submitFeedback();">
+        Submit Feedback
+    </button>
+
+    <p id="message"></p>
+
 </body>
-</html >
+</html>
