@@ -37,7 +37,7 @@
             try {
                 return JSON.parse(localStorage.getItem(storageKey)) || [];
             }
-            catch {
+            catch (error) {
                 return [];
             }
         }
@@ -76,18 +76,12 @@
 
             document.getElementById("feedbackForm").reset();
 
-            showFormMessage(
-                "Your feedback was submitted.",
-                true
-            );
-
+            showFormMessage("Your feedback was submitted.", true);
             showSubmissions();
         }
 
         function showFormMessage(message, success) {
-            var messageBox = $("#formMessage");
-
-            messageBox
+            $("#formMessage")
                 .text(message)
                 .removeClass("success error")
                 .addClass(success ? "success" : "error")
@@ -96,12 +90,26 @@
 
         function showSubmissions() {
             var submissions = getSubmissions();
+            var selectedCategory = $("#categoryFilter").val();
+
+            if (selectedCategory) {
+                submissions = submissions.filter(function (submission) {
+                    return submission.category === selectedCategory;
+                });
+            }
+
             var tableBody = $("#submissionTableBody");
 
             tableBody.empty();
             $("#submissionCount").text(submissions.length);
 
             if (submissions.length === 0) {
+                $("#emptyState").text(
+                    selectedCategory
+                        ? "No feedback was found in this category."
+                        : "No feedback has been submitted yet."
+                );
+
                 $("#emptyState").show();
                 $("#tableContainer").hide();
                 return;
@@ -145,10 +153,7 @@
                     $("<option>")
                         .val(status)
                         .text(status)
-                        .prop(
-                            "selected",
-                            status === submission.status
-                        )
+                        .prop("selected", status === submission.status)
                         .appendTo(statusSelect);
                 });
 
@@ -183,9 +188,7 @@
             saveSubmissions(submissions);
             showSubmissions();
 
-            $("#statusMessage")
-                .text("Status updated.")
-                .show();
+            $("#statusMessage").text("Status updated.").show();
 
             setTimeout(function () {
                 $("#statusMessage").fadeOut();
@@ -310,7 +313,6 @@
             margin: 0;
             color: #64748b;
             font-size: 14px;
-            line-height: 1.5;
         }
 
         .card-body {
@@ -356,7 +358,6 @@
             background: #eff6ff;
             color: #1e3a5f;
             font-size: 13px;
-            line-height: 1.5;
         }
 
         .submit-button {
@@ -405,6 +406,17 @@
             text-align: center;
         }
 
+        .filter-box {
+            margin-bottom: 18px;
+            padding: 14px;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+
+        .filter-box select {
+            margin-top: 7px;
+        }
+
         #emptyState {
             padding: 50px 20px;
             border: 1px dashed #cbd5e1;
@@ -443,16 +455,15 @@
             font-size: 13px;
         }
 
-        td strong {
+        td strong,
+        td small {
             display: block;
-            margin-bottom: 5px;
         }
 
         td small {
-            display: block;
             max-width: 300px;
+            margin-top: 5px;
             color: #64748b;
-            line-height: 1.4;
         }
 
         .status-select {
@@ -489,29 +500,6 @@
         @media (max-width: 850px) {
             .content-grid {
                 grid-template-columns: 1fr;
-            }
-        }
-
-        @media (max-width: 600px) {
-            .header-content {
-                align-items: flex-start;
-                gap: 15px;
-            }
-
-            .logo p {
-                display: none;
-            }
-
-            .connection-button {
-                font-size: 11px;
-            }
-
-            .intro {
-                padding: 25px;
-            }
-
-            .intro h2 {
-                font-size: 27px;
             }
         }
     </style>
@@ -553,10 +541,7 @@
             <section class="card">
                 <div class="card-header">
                     <h2>Submit Feedback</h2>
-
-                    <p>
-                        Describe the concern and suggest a possible solution.
-                    </p>
+                    <p>Describe the concern and suggest a possible solution.</p>
                 </div>
 
                 <div class="card-body">
@@ -568,34 +553,20 @@
                             <label for="category">Category</label>
 
                             <select id="category" required>
-                                <option value="">
-                                    Select a category
-                                </option>
-                                <option value="Workload">
-                                    Workload
-                                </option>
-                                <option value="Tools">
-                                    Tools and Equipment
-                                </option>
-                                <option value="Scheduling">
-                                    Scheduling
-                                </option>
-                                <option value="Management">
-                                    Management
-                                </option>
+                                <option value="">Select a category</option>
+                                <option value="Workload">Workload</option>
+                                <option value="Tools">Tools and Equipment</option>
+                                <option value="Scheduling">Scheduling</option>
+                                <option value="Management">Management</option>
                                 <option value="Workplace Culture">
                                     Workplace Culture
                                 </option>
-                                <option value="Other">
-                                    Other
-                                </option>
+                                <option value="Other">Other</option>
                             </select>
                         </div>
 
                         <div class="field">
-                            <label for="concern">
-                                Workplace Concern
-                            </label>
+                            <label for="concern">Workplace Concern</label>
 
                             <textarea
                                 id="concern"
@@ -606,9 +577,7 @@
                         </div>
 
                         <div class="field">
-                            <label for="solution">
-                                Suggested Improvement
-                            </label>
+                            <label for="solution">Suggested Improvement</label>
 
                             <textarea
                                 id="solution"
@@ -622,10 +591,7 @@
                             Your name, email, and employee ID are not requested.
                         </div>
 
-                        <button
-                            type="submit"
-                            class="submit-button"
-                        >
+                        <button type="submit" class="submit-button">
                             Submit Anonymous Feedback
                         </button>
 
@@ -638,23 +604,35 @@
                 <div class="card-header">
                     <h2>
                         Manager Review
-                        <span
-                            id="submissionCount"
-                            class="count"
-                        >
-                            0
-                        </span>
+                        <span id="submissionCount" class="count">0</span>
                     </h2>
 
-                    <p>
-                        Review submitted concerns and update their status.
-                    </p>
+                    <p>Review feedback and update its current status.</p>
                 </div>
 
                 <div class="card-body">
-                    <div id="statusMessage">
-                        Status updated.
+                    <div class="filter-box">
+                        <label for="categoryFilter">
+                            Browse Feedback by Category
+                        </label>
+
+                        <select
+                            id="categoryFilter"
+                            onchange="showSubmissions();"
+                        >
+                            <option value="">All Categories</option>
+                            <option value="Workload">Workload</option>
+                            <option value="Tools">Tools and Equipment</option>
+                            <option value="Scheduling">Scheduling</option>
+                            <option value="Management">Management</option>
+                            <option value="Workplace Culture">
+                                Workplace Culture
+                            </option>
+                            <option value="Other">Other</option>
+                        </select>
                     </div>
+
+                    <div id="statusMessage">Status updated.</div>
 
                     <div id="emptyState">
                         No feedback has been submitted yet.
