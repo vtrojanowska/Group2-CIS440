@@ -3,13 +3,84 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-
     <title>WorkVoice</title>
 
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 
     <script>
-        var storageKey = "workvoiceSubmissions";
+        var allSubmissions = [];
+        var managerMode = false;
+        var submitterToken = "";
+        var supporterToken = "";
+        var ownedSubmissionIds = [];
+        var supportedSubmissionIds = [];
+
+        document.addEventListener("DOMContentLoaded", function () {
+            setupBrowserIdentity();
+            loadLocalLists();
+            checkManagerMode();
+            showSubmissions();
+        });
+
+        function makeToken() {
+            return "wv-" + Date.now() + "-" +
+                Math.random().toString(36).substring(2, 12);
+        }
+
+        function setupBrowserIdentity() {
+            submitterToken = localStorage.getItem("workvoiceSubmitterToken");
+            supporterToken = localStorage.getItem("workvoiceSupporterToken");
+
+            if (!submitterToken) {
+                submitterToken = makeToken();
+                localStorage.setItem("workvoiceSubmitterToken", submitterToken);
+            }
+
+            if (!supporterToken) {
+                supporterToken = makeToken();
+                localStorage.setItem("workvoiceSupporterToken", supporterToken);
+            }
+        }
+
+        function loadLocalLists() {
+            try {
+                ownedSubmissionIds = JSON.parse(
+                    localStorage.getItem("workvoiceOwnedSubmissions") || "[]"
+                );
+            }
+            catch (e) {
+                ownedSubmissionIds = [];
+            }
+
+            try {
+                supportedSubmissionIds = JSON.parse(
+                    localStorage.getItem("workvoiceSupportedSubmissions") || "[]"
+                );
+            }
+            catch (e) {
+                supportedSubmissionIds = [];
+            }
+        }
+
+        function saveOwnedSubmission(id) {
+            if (ownedSubmissionIds.indexOf(id) === -1) {
+                ownedSubmissionIds.push(id);
+                localStorage.setItem(
+                    "workvoiceOwnedSubmissions",
+                    JSON.stringify(ownedSubmissionIds)
+                );
+            }
+        }
+
+        function saveSupportedSubmission(id) {
+            if (supportedSubmissionIds.indexOf(id) === -1) {
+                supportedSubmissionIds.push(id);
+                localStorage.setItem(
+                    "workvoiceSupportedSubmissions",
+                    JSON.stringify(supportedSubmissionIds)
+                );
+            }
+        }
 
         function TestButtonHandler() {
             $.ajax({
@@ -18,35 +89,13 @@
                 data: "{}",
                 contentType: "application/json; charset=utf-8",
                 dataType: "json",
-
                 success: function (msg) {
                     alert(msg.d);
                 },
-
                 error: function () {
                     alert("Unable to connect to the web service.");
                 }
             });
-        }
-
-        document.addEventListener("DOMContentLoaded", function () {
-            showSubmissions();
-        });
-
-        function getSubmissions() {
-            try {
-                return JSON.parse(localStorage.getItem(storageKey)) || [];
-            }
-            catch (error) {
-                return [];
-            }
-        }
-
-        function saveSubmissions(submissions) {
-            localStorage.setItem(
-                storageKey,
-                JSON.stringify(submissions)
-            );
         }
 
         function submitFeedback(event) {
@@ -61,23 +110,34 @@
                 return;
             }
 
-            var submissions = getSubmissions();
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/SubmitFeedback",
+                data: JSON.stringify({
+                    category: category,
+                    concern: concern,
+                    solution: solution,
+                    submitterToken: submitterToken
+                }),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    var newId = parseInt(msg.d, 10);
 
-            submissions.unshift({
-                id: Date.now(),
-                category: category,
-                concern: concern,
-                solution: solution,
-                status: "Submitted",
-                date: new Date().toLocaleDateString()
+                    if (newId > 0) {
+                        saveOwnedSubmission(newId);
+                        document.getElementById("feedbackForm").reset();
+                        showFormMessage("Your feedback was submitted.", true);
+                        showSubmissions();
+                    }
+                    else {
+                        showFormMessage("The feedback could not be saved.", false);
+                    }
+                },
+                error: function () {
+                    showFormMessage("Unable to submit feedback.", false);
+                }
             });
-
-            saveSubmissions(submissions);
-
-            document.getElementById("feedbackForm").reset();
-
-            showFormMessage("Your feedback was submitted.", true);
-            showSubmissions();
         }
 
         function showFormMessage(message, success) {
@@ -89,575 +149,901 @@
         }
 
         function showSubmissions() {
-            var submissions = getSubmissions();
-            var selectedCategory = $("#categoryFilter").val();
-
-            if (selectedCategory) {
-                submissions = submissions.filter(function (submission) {
-                    return submission.category === selectedCategory;
-                });
-            }
-
-            var tableBody = $("#submissionTableBody");
-
-            tableBody.empty();
-            $("#submissionCount").text(submissions.length);
-
-            if (submissions.length === 0) {
-                $("#emptyState").text(
-                    selectedCategory
-                        ? "No feedback was found in this category."
-                        : "No feedback has been submitted yet."
-                );
-
-                $("#emptyState").show();
-                $("#tableContainer").hide();
-                return;
-            }
-
-            $("#emptyState").hide();
-            $("#tableContainer").show();
-
-            submissions.forEach(function (submission) {
-                var row = $("<tr>");
-
-                $("<td>")
-                    .text(submission.category)
-                    .appendTo(row);
-
-                var feedbackCell = $("<td>");
-
-                $("<strong>")
-                    .text(submission.concern)
-                    .appendTo(feedbackCell);
-
-                $("<small>")
-                    .text(submission.solution)
-                    .appendTo(feedbackCell);
-
-                feedbackCell.appendTo(row);
-
-                $("<td>")
-                    .text(submission.date)
-                    .appendTo(row);
-
-                var statusSelect = $("<select>")
-                    .addClass("status-select");
-
-                [
-                    "Submitted",
-                    "Under Review",
-                    "In Progress",
-                    "Resolved"
-                ].forEach(function (status) {
-                    $("<option>")
-                        .val(status)
-                        .text(status)
-                        .prop("selected", status === submission.status)
-                        .appendTo(statusSelect);
-                });
-
-                var updateButton = $("<button>")
-                    .addClass("update-button")
-                    .text("Update")
-                    .on("click", function () {
-                        updateStatus(
-                            submission.id,
-                            statusSelect.val()
-                        );
-                    });
-
-                $("<td>")
-                    .append(statusSelect)
-                    .append(updateButton)
-                    .appendTo(row);
-
-                tableBody.append(row);
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/GetSubmissions",
+                data: "{}",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    allSubmissions = msg.d || [];
+                    renderPage();
+                },
+                error: function () {
+                    $("#feedbackList")
+                        .html('<div class="empty">Unable to load feedback.</div>');
+                }
             });
         }
 
-        function updateStatus(id, newStatus) {
-            var submissions = getSubmissions();
+        function renderPage() {
+            var category = $("#categoryFilter").val() || "";
+            var status = $("#statusFilter").val() || "";
+
+            var filtered = allSubmissions.filter(function (submission) {
+                var categoryMatch = !category || submission.category === category;
+                var statusMatch = !status || submission.status === status;
+                return categoryMatch && statusMatch;
+            });
+
+            renderTrends(filtered);
+            renderSubmissions(filtered);
+        }
+
+        function renderTrends(submissions) {
+            var categoryCounts = {};
+            var topSubmission = null;
 
             submissions.forEach(function (submission) {
-                if (submission.id === id) {
-                    submission.status = newStatus;
+                if (!categoryCounts[submission.category]) {
+                    categoryCounts[submission.category] = 0;
+                }
+
+                categoryCounts[submission.category]++;
+
+                if (!topSubmission ||
+                    submission.support_count > topSubmission.support_count) {
+                    topSubmission = submission;
                 }
             });
 
-            saveSubmissions(submissions);
-            showSubmissions();
+            var summary = $("#trendSummary");
+            summary.empty();
 
-            $("#statusMessage").text("Status updated.").show();
+            if (submissions.length === 0) {
+                summary.append(
+                    $('<div class="trend-item">').text("No matching submissions")
+                );
+                $("#topIdea").text("No matching idea");
+                return;
+            }
 
-            setTimeout(function () {
-                $("#statusMessage").fadeOut();
-            }, 1500);
+            Object.keys(categoryCounts).sort().forEach(function (category) {
+                summary.append(
+                    $('<div class="trend-item">').text(
+                        categoryLabel(category) + ": " + categoryCounts[category]
+                    )
+                );
+            });
+
+            if (topSubmission) {
+                $("#topIdea").text(
+                    topSubmission.concern +
+                    " (" + topSubmission.support_count + " supports)"
+                );
+            }
+        }
+
+        function categoryLabel(category) {
+            if (category === "Tools") {
+                return "Tools and Equipment";
+            }
+
+            return category;
+        }
+
+        function renderSubmissions(submissions) {
+            var list = $("#feedbackList");
+            list.empty();
+            $("#submissionCount").text(submissions.length);
+
+            if (submissions.length === 0) {
+                list.append(
+                    $('<div class="empty">').text(
+                        "No feedback was found for the selected filters."
+                    )
+                );
+                return;
+            }
+
+            submissions.forEach(function (submission) {
+                var card = $('<div class="submission-card">');
+
+                var top = $('<div class="submission-top">');
+                var titleArea = $('<div>');
+
+                titleArea.append(
+                    $('<span class="category-tag">').text(
+                        categoryLabel(submission.category)
+                    )
+                );
+
+                titleArea.append(
+                    $('<h3>').text(submission.concern)
+                );
+
+                titleArea.append(
+                    $('<div class="date-text">').text(
+                        "Submitted " + submission.submitted_on
+                    )
+                );
+
+                top.append(titleArea);
+                top.append(
+                    $('<span class="status-badge">').text(submission.status)
+                );
+
+                card.append(top);
+
+                var actions = $('<div class="quick-actions">');
+
+                var supportButton = $('<button class="secondary-button">');
+                var alreadySupported =
+                    supportedSubmissionIds.indexOf(submission.id) !== -1;
+
+                supportButton.text(
+                    alreadySupported
+                        ? "Supported (" + submission.support_count + ")"
+                        : "Support (" + submission.support_count + ")"
+                );
+
+                if (alreadySupported) {
+                    supportButton.prop("disabled", true);
+                }
+
+                supportButton.on("click", function () {
+                    supportIdea(submission.id);
+                });
+
+                var detailsButton = $('<button class="secondary-button">')
+                    .text("View Details");
+
+                actions.append(supportButton);
+                actions.append(detailsButton);
+                card.append(actions);
+
+                var details = $('<div class="details-panel">').hide();
+
+                details.append(
+                    $('<h4>').text("Suggested Improvement")
+                );
+
+                details.append(
+                    $('<p>').text(submission.solution)
+                );
+
+                if (submission.manager_response) {
+                    var responseBox = $('<div class="manager-response">');
+                    responseBox.append($('<strong>').text("Manager Response"));
+                    responseBox.append($('<p>').text(submission.manager_response));
+
+                    if (submission.response_date) {
+                        responseBox.append(
+                            $('<small>').text("Posted " + submission.response_date)
+                        );
+                    }
+
+                    details.append(responseBox);
+                }
+
+                var discussionArea = $('<div class="discussion-area">');
+                discussionArea.append(
+                    $('<h4>').text("Follow-Up Discussion")
+                );
+
+                var messages = $('<div class="messages">')
+                    .attr("id", "messages-" + submission.id)
+                    .text("Open details to load discussion.");
+
+                discussionArea.append(messages);
+
+                if (ownedSubmissionIds.indexOf(submission.id) !== -1) {
+                    var employeeText = $('<textarea class="followup-input">')
+                        .attr("id", "employee-followup-" + submission.id)
+                        .attr("maxlength", "1000")
+                        .attr("placeholder", "Reply anonymously as the original submitter");
+
+                    var employeeButton = $('<button class="secondary-button">')
+                        .text("Post Anonymous Reply")
+                        .on("click", function () {
+                            addEmployeeFollowup(submission.id);
+                        });
+
+                    discussionArea.append(employeeText);
+                    discussionArea.append(employeeButton);
+                }
+
+                if (managerMode) {
+                    var managerTools = $('<div class="manager-tools">');
+                    managerTools.append($('<h4>').text("Manager Controls"));
+
+                    var statusRow = $('<div class="manager-row">');
+                    var statusSelect = $('<select>')
+                        .attr("id", "status-" + submission.id);
+
+                    [
+                        "Submitted",
+                        "Under Review",
+                        "Planned",
+                        "Completed"
+                    ].forEach(function (status) {
+                        statusSelect.append(
+                            $('<option>')
+                                .val(status)
+                                .text(status)
+                                .prop("selected", status === submission.status)
+                        );
+                    });
+
+                    var statusButton = $('<button class="manager-button">')
+                        .text("Update Status")
+                        .on("click", function () {
+                            updateStatus(
+                                submission.id,
+                                statusSelect.val()
+                            );
+                        });
+
+                    statusRow.append(statusSelect);
+                    statusRow.append(statusButton);
+                    managerTools.append(statusRow);
+
+                    var responseText = $('<textarea class="followup-input">')
+                        .attr("id", "manager-response-" + submission.id)
+                        .attr("maxlength", "1000")
+                        .attr("placeholder", "Post a public manager response");
+
+                    var responseButton = $('<button class="manager-button">')
+                        .text("Post Manager Response")
+                        .on("click", function () {
+                            addManagerResponse(submission.id);
+                        });
+
+                    managerTools.append(responseText);
+                    managerTools.append(responseButton);
+
+                    var managerFollowup = $('<textarea class="followup-input">')
+                        .attr("id", "manager-followup-" + submission.id)
+                        .attr("maxlength", "1000")
+                        .attr("placeholder", "Ask a follow-up question");
+
+                    var managerFollowupButton = $('<button class="manager-button">')
+                        .text("Post Follow-Up Question")
+                        .on("click", function () {
+                            addManagerFollowup(submission.id);
+                        });
+
+                    managerTools.append(managerFollowup);
+                    managerTools.append(managerFollowupButton);
+                    details.append(managerTools);
+                }
+
+                details.append(discussionArea);
+                card.append(details);
+
+                detailsButton.on("click", function () {
+                    details.toggle();
+
+                    if (details.is(":visible")) {
+                        loadFollowups(submission.id);
+                        detailsButton.text("Hide Details");
+                    }
+                    else {
+                        detailsButton.text("View Details");
+                    }
+                });
+
+                list.append(card);
+            });
+        }
+
+        function supportIdea(submissionId) {
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/SupportIdea",
+                data: JSON.stringify({
+                    submissionId: submissionId,
+                    supporterToken: supporterToken
+                }),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    if (msg.d === true) {
+                        saveSupportedSubmission(submissionId);
+                        showSubmissions();
+                    }
+                    else {
+                        alert("You already supported this idea, or it could not be saved.");
+                    }
+                },
+                error: function () {
+                    alert("Unable to support this idea.");
+                }
+            });
+        }
+
+        function managerLogin() {
+            var code = $("#managerCode").val().trim();
+
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/ManagerLogin",
+                data: JSON.stringify({ code: code }),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    if (msg.d === true) {
+                        managerMode = true;
+                        $("#managerCode").val("");
+                        updateManagerDisplay();
+                        renderPage();
+                    }
+                    else {
+                        alert("Incorrect manager code.");
+                    }
+                }
+            });
+        }
+
+        function managerLogout() {
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/ManagerLogout",
+                data: "{}",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                complete: function () {
+                    managerMode = false;
+                    updateManagerDisplay();
+                    renderPage();
+                }
+            });
+        }
+
+        function checkManagerMode() {
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/IsManager",
+                data: "{}",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    managerMode = msg.d === true;
+                    updateManagerDisplay();
+                }
+            });
+        }
+
+        function updateManagerDisplay() {
+            if (managerMode) {
+                $("#managerLoginArea").hide();
+                $("#managerActiveArea").show();
+            }
+            else {
+                $("#managerLoginArea").show();
+                $("#managerActiveArea").hide();
+            }
+        }
+
+        function updateStatus(id, status) {
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/UpdateSubmissionStatus",
+                data: JSON.stringify({ id: id, status: status }),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    if (msg.d === true) {
+                        showSubmissions();
+                    }
+                    else {
+                        alert("Status could not be updated.");
+                    }
+                }
+            });
+        }
+
+        function addManagerResponse(id) {
+            var response = $("#manager-response-" + id).val().trim();
+
+            if (!response) {
+                alert("Enter a manager response first.");
+                return;
+            }
+
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/AddManagerResponse",
+                data: JSON.stringify({ id: id, response: response }),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    if (msg.d === true) {
+                        showSubmissions();
+                    }
+                    else {
+                        alert("Manager response could not be saved.");
+                    }
+                }
+            });
+        }
+
+        function loadFollowups(submissionId) {
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/GetFollowups",
+                data: JSON.stringify({ submissionId: submissionId }),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    var container = $("#messages-" + submissionId);
+                    var messages = msg.d || [];
+                    container.empty();
+
+                    if (messages.length === 0) {
+                        container.append(
+                            $('<div class="no-messages">').text("No follow-up messages yet.")
+                        );
+                        return;
+                    }
+
+                    messages.forEach(function (item) {
+                        var message = $('<div class="message-item">');
+                        message.append(
+                            $('<strong>').text(item.author_type)
+                        );
+                        message.append(
+                            $('<span class="message-date">').text(item.created_on)
+                        );
+                        message.append(
+                            $('<p>').text(item.message)
+                        );
+                        container.append(message);
+                    });
+                }
+            });
+        }
+
+        function addEmployeeFollowup(submissionId) {
+            var input = $("#employee-followup-" + submissionId);
+            var message = input.val().trim();
+
+            if (!message) {
+                return;
+            }
+
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/AddEmployeeFollowup",
+                data: JSON.stringify({
+                    submissionId: submissionId,
+                    message: message,
+                    authorToken: submitterToken
+                }),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    if (msg.d === true) {
+                        input.val("");
+                        loadFollowups(submissionId);
+                    }
+                    else {
+                        alert("This browser is not the original submitter for that feedback.");
+                    }
+                }
+            });
+        }
+
+        function addManagerFollowup(submissionId) {
+            var input = $("#manager-followup-" + submissionId);
+            var message = input.val().trim();
+
+            if (!message) {
+                return;
+            }
+
+            $.ajax({
+                type: "POST",
+                url: "ProjectServices.asmx/AddManagerFollowup",
+                data: JSON.stringify({
+                    submissionId: submissionId,
+                    message: message
+                }),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (msg) {
+                    if (msg.d === true) {
+                        input.val("");
+                        loadFollowups(submissionId);
+                    }
+                    else {
+                        alert("Follow-up question could not be saved.");
+                    }
+                }
+            });
         }
     </script>
 
     <style>
-        * {
-            box-sizing: border-box;
-        }
-
+        * { box-sizing: border-box; }
         body {
             margin: 0;
             font-family: Arial, sans-serif;
             background: #f4f6f9;
             color: #1f2937;
         }
-
         header {
             background: #13233a;
             color: white;
-            padding: 18px 30px;
+            padding: 18px 24px;
         }
-
-        .header-content {
+        .header-inner {
             max-width: 1100px;
             margin: auto;
             display: flex;
-            align-items: center;
             justify-content: space-between;
-        }
-
-        .logo {
-            display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 20px;
         }
-
-        .logo-box {
-            width: 42px;
-            height: 42px;
-            display: grid;
-            place-items: center;
-            border-radius: 10px;
-            background: #2563eb;
-            font-size: 20px;
-            font-weight: bold;
-        }
-
-        .logo h1 {
-            margin: 0;
-            font-size: 20px;
-        }
-
-        .logo p {
-            margin: 3px 0 0;
-            color: #b8c5d8;
-            font-size: 12px;
-        }
-
-        .connection-button {
-            padding: 9px 14px;
-            border: 1px solid #6b7d95;
-            border-radius: 7px;
+        .brand h1 { margin: 0; font-size: 24px; }
+        .brand p { margin: 4px 0 0; color: #c7d2e0; font-size: 13px; }
+        .header-button {
+            padding: 9px 13px;
+            border: 1px solid #8ea0b8;
             background: transparent;
             color: white;
+            border-radius: 6px;
             cursor: pointer;
         }
-
         main {
             max-width: 1100px;
             margin: auto;
-            padding: 35px 20px 60px;
+            padding: 28px 18px 60px;
         }
-
-        .intro {
-            padding: 35px;
-            border-radius: 14px;
+        .hero {
             background: #1c3557;
             color: white;
+            border-radius: 10px;
+            padding: 28px;
+            margin-bottom: 22px;
         }
-
-        .intro h2 {
-            margin: 0 0 12px;
-            font-size: 34px;
-        }
-
-        .intro p {
-            max-width: 700px;
-            margin: 0;
-            color: #d6dfeb;
-            line-height: 1.6;
-        }
-
-        .content-grid {
+        .hero h2 { margin: 0 0 8px; font-size: 30px; }
+        .hero p { margin: 0; color: #d6dfeb; line-height: 1.5; }
+        .two-column {
             display: grid;
-            grid-template-columns: 1fr 1.4fr;
-            gap: 22px;
-            margin-top: 24px;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
         }
-
         .card {
-            overflow: hidden;
-            border: 1px solid #dbe1e8;
-            border-radius: 12px;
             background: white;
-            box-shadow: 0 5px 18px rgba(0, 0, 0, 0.06);
+            border: 1px solid #dbe1e8;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
         }
-
-        .card-header {
-            padding: 22px;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .card-header h2 {
-            margin: 0 0 7px;
-            font-size: 22px;
-        }
-
-        .card-header p {
-            margin: 0;
-            color: #64748b;
-            font-size: 14px;
-        }
-
-        .card-body {
-            padding: 22px;
-        }
-
-        .field {
-            margin-bottom: 18px;
-        }
-
+        .card h2, .card h3 { margin-top: 0; }
         label {
             display: block;
-            margin-bottom: 7px;
+            margin: 13px 0 6px;
             font-size: 14px;
             font-weight: bold;
         }
-
-        select,
-        textarea {
+        select, textarea, input[type="text"], input[type="password"] {
             width: 100%;
-            padding: 11px;
+            padding: 10px;
             border: 1px solid #cbd5e1;
-            border-radius: 7px;
-            font-family: inherit;
-            font-size: 14px;
+            border-radius: 6px;
+            font-family: Arial, sans-serif;
         }
-
-        textarea {
-            min-height: 110px;
-            resize: vertical;
-        }
-
-        select:focus,
-        textarea:focus {
-            outline: none;
-            border-color: #2563eb;
-        }
-
-        .privacy-note {
-            margin-bottom: 18px;
-            padding: 11px;
-            border-radius: 7px;
-            background: #eff6ff;
-            color: #1e3a5f;
-            font-size: 13px;
-        }
-
-        .submit-button {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 7px;
-            background: #2563eb;
-            color: white;
-            font-size: 15px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .submit-button:hover {
-            background: #1d4ed8;
-        }
-
-        #formMessage {
-            display: none;
-            margin-top: 14px;
-            padding: 11px;
-            border-radius: 7px;
-            font-size: 13px;
-        }
-
-        #formMessage.success {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        #formMessage.error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .count {
-            display: inline-block;
-            min-width: 35px;
-            margin-left: 8px;
-            padding: 6px 10px;
-            border-radius: 20px;
-            background: #dbeafe;
-            color: #1d4ed8;
-            font-size: 14px;
-            text-align: center;
-        }
-
-        .filter-box {
-            margin-bottom: 18px;
-            padding: 14px;
-            border-radius: 8px;
-            background: #f8fafc;
-        }
-
-        .filter-box select {
-            margin-top: 7px;
-        }
-
-        #emptyState {
-            padding: 50px 20px;
-            border: 1px dashed #cbd5e1;
-            border-radius: 8px;
-            color: #64748b;
-            text-align: center;
-        }
-
-        #tableContainer {
-            display: none;
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            min-width: 650px;
-            border-collapse: collapse;
-        }
-
-        th,
-        td {
-            padding: 13px;
-            border-bottom: 1px solid #e5e7eb;
-            text-align: left;
-            vertical-align: top;
-        }
-
-        th {
-            background: #f8fafc;
-            color: #64748b;
-            font-size: 12px;
-            text-transform: uppercase;
-        }
-
-        td {
-            font-size: 13px;
-        }
-
-        td strong,
-        td small {
-            display: block;
-        }
-
-        td small {
-            max-width: 300px;
-            margin-top: 5px;
-            color: #64748b;
-        }
-
-        .status-select {
-            width: auto;
-            min-width: 125px;
-            padding: 7px;
-        }
-
-        .update-button {
-            margin-left: 7px;
-            padding: 8px 11px;
+        textarea { min-height: 95px; resize: vertical; }
+        .primary-button, .manager-button, .secondary-button {
             border: none;
             border-radius: 6px;
-            background: #13233a;
-            color: white;
+            padding: 10px 13px;
             cursor: pointer;
-        }
-
-        #statusMessage {
-            display: none;
-            margin-bottom: 12px;
-            color: #15803d;
-            font-size: 13px;
             font-weight: bold;
         }
-
+        .primary-button {
+            width: 100%;
+            margin-top: 15px;
+            background: #2563eb;
+            color: white;
+        }
+        .manager-button {
+            margin-top: 9px;
+            background: #13233a;
+            color: white;
+        }
+        .secondary-button {
+            background: #e8eef7;
+            color: #1e3a5f;
+            margin-right: 7px;
+            margin-top: 8px;
+        }
+        .secondary-button:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+        #formMessage {
+            display: none;
+            margin-top: 12px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        #formMessage.success { background: #dcfce7; color: #166534; }
+        #formMessage.error { background: #fee2e2; color: #991b1b; }
+        .manager-box {
+            display: flex;
+            gap: 8px;
+            align-items: end;
+        }
+        .manager-box .input-wrap { flex: 1; }
+        .manager-active {
+            display: none;
+            padding: 10px;
+            background: #ecfdf5;
+            border-radius: 6px;
+        }
+        .filters {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .trend-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        #trendSummary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .trend-item {
+            background: #eef2f7;
+            padding: 7px 10px;
+            border-radius: 20px;
+            font-size: 13px;
+        }
+        #topIdea {
+            padding: 10px;
+            background: #fff7ed;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .section-heading {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .count {
+            background: #dbeafe;
+            color: #1d4ed8;
+            border-radius: 20px;
+            padding: 5px 10px;
+            font-size: 13px;
+        }
+        .submission-card {
+            background: white;
+            border: 1px solid #dbe1e8;
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 14px;
+        }
+        .submission-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .submission-top h3 { margin: 8px 0 4px; }
+        .category-tag {
+            display: inline-block;
+            background: #eef2ff;
+            color: #3730a3;
+            border-radius: 15px;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        .status-badge {
+            height: fit-content;
+            white-space: nowrap;
+            background: #e2e8f0;
+            padding: 6px 9px;
+            border-radius: 15px;
+            font-size: 12px;
+        }
+        .date-text { color: #64748b; font-size: 12px; }
+        .quick-actions { margin-top: 10px; }
+        .details-panel {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid #e5e7eb;
+        }
+        .manager-response {
+            background: #eff6ff;
+            border-left: 4px solid #2563eb;
+            padding: 12px;
+            margin: 14px 0;
+        }
+        .manager-response p { margin: 7px 0; }
+        .manager-tools {
+            background: #f8fafc;
+            border: 1px solid #dbe1e8;
+            padding: 13px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+        .manager-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .manager-row select { flex: 1; }
+        .followup-input { margin-top: 9px; min-height: 75px; }
+        .discussion-area { margin-top: 18px; }
+        .messages {
+            background: #f8fafc;
+            padding: 10px;
+            border-radius: 7px;
+            margin-bottom: 10px;
+        }
+        .message-item {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 9px 0;
+        }
+        .message-item:last-child { border-bottom: none; }
+        .message-item p { margin: 5px 0 0; }
+        .message-date {
+            margin-left: 8px;
+            font-size: 11px;
+            color: #64748b;
+        }
+        .empty {
+            background: white;
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 35px;
+            text-align: center;
+            color: #64748b;
+        }
         footer {
-            margin-top: 25px;
+            text-align: center;
             color: #94a3b8;
             font-size: 12px;
-            text-align: center;
+            margin-top: 25px;
         }
-
-        @media (max-width: 850px) {
-            .content-grid {
-                grid-template-columns: 1fr;
-            }
+        @media (max-width: 800px) {
+            .two-column, .trend-grid, .filters { grid-template-columns: 1fr; }
+            .header-inner, .submission-top { flex-direction: column; }
         }
     </style>
 </head>
-
 <body>
     <header>
-        <div class="header-content">
-            <div class="logo">
-                <div class="logo-box">W</div>
-
-                <div>
-                    <h1>WorkVoice</h1>
-                    <p>Anonymous Workplace Improvement Board</p>
-                </div>
+        <div class="header-inner">
+            <div class="brand">
+                <h1>WorkVoice</h1>
+                <p>Anonymous Workplace Improvement Board</p>
             </div>
-
-            <button
-                type="button"
-                class="connection-button"
-                onclick="TestButtonHandler();"
-            >
+            <button class="header-button" onclick="TestButtonHandler();">
                 Test Server Connection
             </button>
         </div>
     </header>
 
     <main>
-        <section class="intro">
+        <section class="hero">
             <h2>Make your workplace voice heard.</h2>
-
             <p>
-                Submit workplace concerns anonymously, suggest possible
-                improvements, and view how management responds.
+                Submit concerns anonymously, support useful ideas, and see how
+                management responds and acts on workplace feedback.
             </p>
         </section>
 
-        <div class="content-grid">
+        <div class="two-column">
             <section class="card">
-                <div class="card-header">
-                    <h2>Submit Feedback</h2>
-                    <p>Describe the concern and suggest a possible solution.</p>
-                </div>
+                <h2>Submit Anonymous Feedback</h2>
+                <form id="feedbackForm" onsubmit="submitFeedback(event);">
+                    <label for="category">Category</label>
+                    <select id="category" required>
+                        <option value="">Select a category</option>
+                        <option value="Workload">Workload</option>
+                        <option value="Tools">Tools and Equipment</option>
+                        <option value="Scheduling">Scheduling</option>
+                        <option value="Management">Management</option>
+                        <option value="Workplace Culture">Workplace Culture</option>
+                        <option value="Other">Other</option>
+                    </select>
 
-                <div class="card-body">
-                    <form
-                        id="feedbackForm"
-                        onsubmit="submitFeedback(event);"
-                    >
-                        <div class="field">
-                            <label for="category">Category</label>
+                    <label for="concern">Workplace Concern</label>
+                    <textarea id="concern" maxlength="600" required></textarea>
 
-                            <select id="category" required>
-                                <option value="">Select a category</option>
-                                <option value="Workload">Workload</option>
-                                <option value="Tools">Tools and Equipment</option>
-                                <option value="Scheduling">Scheduling</option>
-                                <option value="Management">Management</option>
-                                <option value="Workplace Culture">
-                                    Workplace Culture
-                                </option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
+                    <label for="solution">Suggested Improvement</label>
+                    <textarea id="solution" maxlength="600" required></textarea>
 
-                        <div class="field">
-                            <label for="concern">Workplace Concern</label>
-
-                            <textarea
-                                id="concern"
-                                maxlength="600"
-                                required
-                                placeholder="Describe the workplace issue."
-                            ></textarea>
-                        </div>
-
-                        <div class="field">
-                            <label for="solution">Suggested Improvement</label>
-
-                            <textarea
-                                id="solution"
-                                maxlength="600"
-                                required
-                                placeholder="Describe a possible solution."
-                            ></textarea>
-                        </div>
-
-                        <div class="privacy-note">
-                            Your name, email, and employee ID are not requested.
-                        </div>
-
-                        <button type="submit" class="submit-button">
-                            Submit Anonymous Feedback
-                        </button>
-
-                        <div id="formMessage"></div>
-                    </form>
-                </div>
+                    <button class="primary-button" type="submit">
+                        Submit Feedback
+                    </button>
+                    <div id="formMessage"></div>
+                </form>
             </section>
 
             <section class="card">
-                <div class="card-header">
-                    <h2>
-                        Manager Review
-                        <span id="submissionCount" class="count">0</span>
-                    </h2>
-
-                    <p>Review feedback and update its current status.</p>
+                <h2>Manager Access</h2>
+                <div id="managerLoginArea" class="manager-box">
+                    <div class="input-wrap">
+                        <label for="managerCode">Manager Code</label>
+                        <input id="managerCode" type="password" />
+                    </div>
+                    <button class="manager-button" onclick="managerLogin();">
+                        Enter Manager Mode
+                    </button>
                 </div>
 
-                <div class="card-body">
-                    <div class="filter-box">
-                        <label for="categoryFilter">
-                            Browse Feedback by Category
-                        </label>
+                <div id="managerActiveArea" class="manager-active">
+                    Manager mode is active.
+                    <button class="secondary-button" onclick="managerLogout();">
+                        Log Out
+                    </button>
+                </div>
 
-                        <select
-                            id="categoryFilter"
-                            onchange="showSubmissions();"
-                        >
+                <hr />
+
+                <div class="filters">
+                    <div>
+                        <label for="categoryFilter">Category Filter</label>
+                        <select id="categoryFilter" onchange="renderPage();">
                             <option value="">All Categories</option>
                             <option value="Workload">Workload</option>
                             <option value="Tools">Tools and Equipment</option>
                             <option value="Scheduling">Scheduling</option>
                             <option value="Management">Management</option>
-                            <option value="Workplace Culture">
-                                Workplace Culture
-                            </option>
+                            <option value="Workplace Culture">Workplace Culture</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
 
-                    <div id="statusMessage">Status updated.</div>
-
-                    <div id="emptyState">
-                        No feedback has been submitted yet.
-                    </div>
-
-                    <div id="tableContainer">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Category</th>
-                                    <th>Feedback</th>
-                                    <th>Date</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-
-                            <tbody id="submissionTableBody"></tbody>
-                        </table>
+                    <div>
+                        <label for="statusFilter">Status Filter</label>
+                        <select id="statusFilter" onchange="renderPage();">
+                            <option value="">All Statuses</option>
+                            <option value="Submitted">Submitted</option>
+                            <option value="Under Review">Under Review</option>
+                            <option value="Planned">Planned</option>
+                            <option value="Completed">Completed</option>
+                        </select>
                     </div>
                 </div>
             </section>
         </div>
 
+        <section class="card">
+            <h2>Workplace Feedback Trends</h2>
+            <div class="trend-grid">
+                <div>
+                    <h3>Submissions by Category</h3>
+                    <div id="trendSummary"></div>
+                </div>
+                <div>
+                    <h3>Most Supported Idea</h3>
+                    <div id="topIdea">No submissions yet.</div>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <div class="section-heading">
+                <h2>Workplace Feedback</h2>
+                <span id="submissionCount" class="count">0</span>
+            </div>
+            <div id="feedbackList">
+                <div class="empty">Loading feedback...</div>
+            </div>
+        </section>
+
         <footer>
-            WorkVoice Prototype — CIS 440 Group 2
+            WorkVoice - CIS 440 Group 2
         </footer>
     </main>
 </body>
